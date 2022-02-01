@@ -1,7 +1,8 @@
+from random import choice
 from django.shortcuts import render
 from django.http import HttpResponseRedirect
 # <HINT> Import any new Models here
-from .models import Course, Enrollment
+from .models import Choice, Course, Enrollment, Lesson, Submission, Question
 from django.contrib.auth.models import User
 from django.shortcuts import get_object_or_404, render, redirect
 from django.urls import reverse
@@ -72,12 +73,14 @@ def check_if_enrolled(user, course):
 
 # CourseListView
 class CourseListView(generic.ListView):
+    print("CourseListView")
     template_name = 'onlinecourse/course_list_bootstrap.html'
     context_object_name = 'course_list'
 
     def get_queryset(self):
         user = self.request.user
         courses = Course.objects.order_by('-total_enrollment')[:10]
+        print("get_queryset : ",courses)
         for course in courses:
             if user.is_authenticated:
                 course.is_enrolled = check_if_enrolled(user, course)
@@ -85,7 +88,9 @@ class CourseListView(generic.ListView):
 
 
 class CourseDetailView(generic.DetailView):
+    print("CourseDetailView")
     model = Course
+    print("model : ",model)
     template_name = 'onlinecourse/course_detail_bootstrap.html'
 
 
@@ -110,18 +115,36 @@ def enroll(request, course_id):
          # Collect the selected choices from exam form
          # Add each selected choice object to the submission object
          # Redirect to show_exam_result with the submission id
-#def submit(request, course_id):
+def submit(request, course_id):
+    course = get_object_or_404(Course, pk=course_id)
+    user = request.user
+    enrollment = Enrollment.objects.filter(user=user, course=course).get()
+    #x = enrollment.get();
+    submission = Submission.objects.create(enrollment_id = enrollment.id )
+    #submission.save()
+    answers = []
+    for key in request.POST:
+        if key.startswith('choice'):
+            value = request.POST[key]
+            choice_id = int(value)
+            answers.append(choice_id)
+    print("answers : ",answers)
+    for a in answers:
+        temp_c = Choice.objects.filter(id = int(a)).get()
+        submission.choices.add(temp_c)
 
+    submission.save()         
+    return HttpResponseRedirect(reverse(viewname='onlinecourse:show_exam_result', args=(course.id,submission.id ))) 
 
 # <HINT> A example method to collect the selected choices from the exam form from the request object
-#def extract_answers(request):
-#    submitted_anwsers = []
-#    for key in request.POST:
-#        if key.startswith('choice'):
-#            value = request.POST[key]
-#            choice_id = int(value)
-#            submitted_anwsers.append(choice_id)
-#    return submitted_anwsers
+def extract_answers(request):
+    submitted_anwsers = []
+    for key in request.POST:
+        if key.startswith('choice'):
+            value = request.POST[key]
+            choice_id = int(value)
+            submitted_anwsers.append(choice_id)
+    return redirect('onlinecourse:index')
 
 
 # <HINT> Create an exam result view to check if learner passed exam and show their question results and result for each question,
@@ -130,7 +153,66 @@ def enroll(request, course_id):
         # Get the selected choice ids from the submission record
         # For each selected choice, check if it is a correct answer or not
         # Calculate the total score
-#def show_exam_result(request, course_id, submission_id):
+def show_exam_result(request, course_id, submission_id):
+    course  =  get_object_or_404(Course, pk=course_id)
+    submission = get_object_or_404(Submission, pk=submission_id)
+    lessons = Lesson.objects.filter(course= course)
 
+    print("lessons : ",len(lessons))
 
+    total =  0
+    total_user =  0
+    q_results = {}
+    c_submits = {}
+    c_results = {}
+
+    for l in lessons:
+        questions = Question.objects.filter(lesson_id=l.id)
+
+        for q in questions:
+            q_total = 0;
+            q_total_user = 0;
+            for c in q.choice_set.all():
+                q_total += 1  
+                temp_right = c.is_correct
+                count =  submission.choices.filter(id = c.id).count()
+                print("count : ",count)
+                temp_user  = count > 0 
+                c_submits[c.id] = temp_user
+                c_results[c.id] = temp_user == temp_right
+                if temp_user == temp_right:
+                    q_total_user += 1        
+            q_results[q.id] =  q.grade*(q_total_user / q_total)
+            total += q.grade 
+            total_user  += q_results[q.id]
+
+    context  = {}
+    context["course"]  =  course
+    context["submission"]  =  submission
+    context["lessons"]  =  lessons
+    #context["choices"]  =  submission.chocies.all()
+    context["total"]  =  total
+    context["total_user"]  =  total_user
+    context["q_results"]  =  q_results
+    context["c_submits"]  =  c_submits
+    context["c_results"]  =  c_results
+    grade =  int((total_user/total)*100)
+    context["grade"] = grade 
+
+    print("context : ",context)
+    #print(vars(submission.chocies))
+    #user = request.user
+    #return render(request, 'onlinecourse/show_exam_result.html', context)
+    return render(request, 'onlinecourse/exam_result_bootstrap.html', context)
+
+def popular_course_list(request):
+    context = {}
+    # If the request method is GET
+    if request.method == 'GET':
+        # Using the objects model manage to read all course list
+        # and sort them by total_enrollment descending
+        course_list = Course.objects.order_by('-total_enrollment')[:10]
+        # Appen the course list as an entry of context dict
+        context['course_list'] = course_list
+        return render(request, 'onlinecourse/course_list.html', context)
 

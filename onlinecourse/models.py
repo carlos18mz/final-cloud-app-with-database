@@ -106,6 +106,7 @@ class Question(models.Model):
     # Foreign key to lesson
     # question text
     # question grade/mark
+    lesson_id = models.ForeignKey(Lesson, on_delete=models.CASCADE)
     text = models.TextField()
     grade = models.IntegerField(default=0)
 
@@ -128,6 +129,7 @@ class Question(models.Model):
 class Choice(models.Model):
     question_id = models.ForeignKey(Question, on_delete=models.CASCADE)#models.ManyToManyField(Question)
     choice_text = models.TextField()
+    is_correct = models.IntegerField(default=0)
 # <HINT> The submission model
 # One enrollment could have multiple submission
 # One submission could have multiple choices
